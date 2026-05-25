@@ -169,7 +169,20 @@
             canvas.width = 500; canvas.height = 750; drawTarget();
             const params = new URLSearchParams(window.location.search);
             if(params.get('room')) { roomId = params.get('room'); document.getElementById('sync-id').value = roomId; startSync(); }
-            canvas.addEventListener('mousedown', (e) => { if(deviceRole === 'judge' && currentThrower) handlePoint(e.clientX, e.clientY); });
+            
+            // Xử lý sự kiện chuột (Máy tính)
+            canvas.addEventListener('mousedown', (e) => { 
+                if(deviceRole === 'judge' && currentThrower) handlePoint(e.clientX, e.clientY); 
+            });
+
+            // Xử lý sự kiện chạm (Điện thoại) - Khắc phục lỗi lệch điểm
+            canvas.addEventListener('touchstart', (e) => {
+                if(deviceRole === 'judge' && currentThrower) {
+                    e.preventDefault(); // Ngăn cuộn trang
+                    const touch = e.touches[0];
+                    handlePoint(touch.clientX, touch.clientY);
+                }
+            }, { passive: false });
         };
 
         function drawTarget(hitX = null, hitY = null) {
@@ -226,8 +239,17 @@
             ctx.fillStyle = "red"; ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
         }
 
+        // HÀM XỬ LÝ ĐIỂM CHẠM - ĐÃ KHẮC PHỤC LỖI TRÊN ĐIỆN THOẠI
         function handlePoint(clientX, clientY) {
-            const rect = canvas.getBoundingClientRect(), x = clientX - rect.left, y = clientY - rect.top;
+            const rect = canvas.getBoundingClientRect();
+            
+            // Tính toán tỷ lệ scale để điểm chạm khớp chính xác với độ phân giải Canvas
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const x = (clientX - rect.left) * scaleX;
+            const y = (clientY - rect.top) * scaleY;
+
             const dist = Math.sqrt(Math.pow(x - 250, 2) + Math.pow(y - 460, 2));
             
             let score = "KHÔNG ĐẠT";
@@ -291,7 +313,7 @@
 
         async function submitResult() {
             if (!currentThrower || !lastHit || clickCount < 2) return alert("Phải thực hiện quả ném thật trước!");
-            const record = { ...currentThrower, ...lastHit }; // Bỏ time theo yêu cầu
+            const record = { ...currentThrower, ...lastHit };
             historyData.unshift(record);
             registeredShooters = registeredShooters.filter(x => x.id !== currentThrower.id);
             currentThrower = null; lastHit = null; clickCount = 0;
@@ -462,7 +484,6 @@
             reader.onload = (evt) => {
                 const workbook = XLSX.read(evt.target.result, { type: 'binary' });
                 const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                // Đồng bộ chính xác tên cột từ hàm exportRegistration
                 registeredShooters = data.map(x => ({
                     id: Date.now() + Math.random(),
                     name: (x["Họ và Tên"] || x["name"] || "").toString().trim(),
