@@ -8,6 +8,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- THƯ VIỆN FIREBASE (PHIÊN BẢN ỔN ĐỊNH) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
@@ -130,13 +135,26 @@
     <div id="all-stats-containers" class="mt-8 space-y-10"></div>
 
     <footer>
-        Phần mềm được tạo bởi đồng chí Thiếu tá Trương Công Sĩ, Trợ lý Tác Chiến,<br>đồng chí Trần Thanh Phương, Tiểu đoàn 4, Trường Quân sự Quân đoàn 34
+        Phần mềm được tạo bởi đồng chí Thiếu tá Trương Công Sĩ, Trợ lý Tác Chiến,<br>đồng chí Trần Thanh Phương, Tiểu đoàn 4, Trường Quân sự Quân đoàn 3
     </footer>
 
     <script>
         window.onbeforeunload = () => "Dữ liệu có thể bị mất nếu tải lại trang!";
-        const MASTER_KEY = "$2a$10$Q9wC3DLyzOq0JM64EXJmGuwtG8flBOVIgLik4fsZNYhJOi.vAXCNS";
-        const API_URL = "https://api.jsonbin.io/v3/b";
+        
+        // --- CẤU HÌNH FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyA2Zig8bOMyKAc0YtN1_NJG1f-8sA0itls",
+            authDomain: "hethongbandanthat.firebaseapp.com",
+            databaseURL: "https://hethongbandanthat-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "hethongbandanthat",
+            storageBucket: "hethongbandanthat.firebasestorage.app",
+            messagingSenderId: "113638127095",
+            appId: "1:113638127095:web:d46f4696e89f4a39552af2"
+        };
+        
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
         let deviceRole = 'viewer', roomId = '', lastHit = null, historyData = [], registeredShooters = [], currentThrower = null, clickCount = 0, editingId = null;
         const PX_PER_CM = 38, canvas = document.getElementById('target'), ctx = canvas.getContext('2d');
 
@@ -168,17 +186,16 @@
         window.onload = () => {
             canvas.width = 500; canvas.height = 750; drawTarget();
             const params = new URLSearchParams(window.location.search);
-            if(params.get('room')) { roomId = params.get('room'); document.getElementById('sync-id').value = roomId; startSync(); }
+            if(params.get('room')) { 
+                roomId = params.get('room'); 
+                document.getElementById('sync-id').value = roomId; 
+                startSync(); 
+            }
             
-            // Xử lý sự kiện chuột (Máy tính)
-            canvas.addEventListener('mousedown', (e) => { 
-                if(deviceRole === 'judge' && currentThrower) handlePoint(e.clientX, e.clientY); 
-            });
-
-            // Xử lý sự kiện chạm (Điện thoại) - Khắc phục lỗi lệch điểm
+            canvas.addEventListener('mousedown', (e) => { if(deviceRole === 'judge' && currentThrower) handlePoint(e.clientX, e.clientY); });
             canvas.addEventListener('touchstart', (e) => {
                 if(deviceRole === 'judge' && currentThrower) {
-                    e.preventDefault(); // Ngăn cuộn trang
+                    e.preventDefault();
                     const touch = e.touches[0];
                     handlePoint(touch.clientX, touch.clientY);
                 }
@@ -188,47 +205,22 @@
         function drawTarget(hitX = null, hitY = null) {
             const cx = 250, cy = 460; 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
             const r12 = 6 * PX_PER_CM;
             ctx.beginPath(); ctx.arc(cx, cy, r12, 0, Math.PI*2); ctx.fillStyle = 'white'; ctx.fill();
             ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
-
-            const circles = [
-                { r: 4.5 * PX_PER_CM, color: '#3b82f6' }, // 9cm
-                { r: 3.0 * PX_PER_CM, color: '#eab308' }, // 6cm
-                { r: 1.5 * PX_PER_CM, color: '#ef4444' }  // 3cm
-            ];
-            circles.forEach(c => {
-                ctx.beginPath(); ctx.arc(cx, cy, c.r, 0, Math.PI * 2);
-                ctx.fillStyle = c.color; ctx.fill();
-                ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.stroke();
-            });
-
-            const boxW = 460, boxH = 90;
-            const boxX = (canvas.width - boxW) / 2;
-            const boxY = (cy - r12) - (2 * PX_PER_CM) - boxH;
-
-            ctx.fillStyle = "white";
-            ctx.strokeStyle = "#475569";
-            ctx.lineWidth = 3;
-            ctx.fillRect(boxX, boxY, boxW, boxH);
-            ctx.strokeRect(boxX, boxY, boxW, boxH);
+            const circles = [ { r: 4.5 * PX_PER_CM, color: '#3b82f6' }, { r: 3.0 * PX_PER_CM, color: '#eab308' }, { r: 1.5 * PX_PER_CM, color: '#ef4444' } ];
+            circles.forEach(c => { ctx.beginPath(); ctx.arc(cx, cy, c.r, 0, Math.PI * 2); ctx.fillStyle = c.color; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.stroke(); });
+            const boxW = 460, boxH = 90; const boxX = (canvas.width - boxW) / 2; const boxY = (cy - r12) - (2 * PX_PER_CM) - boxH;
+            ctx.fillStyle = "white"; ctx.strokeStyle = "#475569"; ctx.lineWidth = 3; ctx.fillRect(boxX, boxY, boxW, boxH); ctx.strokeRect(boxX, boxY, boxW, boxH);
 
             if (lastHit) {
                 const colors = { 'Giỏi': '#ef4444', 'Khá': '#eab308', 'Đạt': '#3b82f6', 'KHÔNG ĐẠT': '#475569' };
                 const textType = clickCount === 1 ? "QUẢ 1 (NỔ NHIỀU LẦN)" : "QUẢ 2 (NỔ THẬT)";
                 const textResult = `${lastHit.score.toUpperCase()} - ${lastHit.side.toUpperCase()}`;
-
-                ctx.textAlign = "center";
-                ctx.fillStyle = "#1e293b";
-                ctx.font = "bold 16px Plus Jakarta Sans";
-                ctx.fillText(textType, 250, boxY + 35);
-
-                ctx.font = "800 24px Plus Jakarta Sans";
-                ctx.fillStyle = colors[lastHit.score] || "#000";
-                if(textResult.length > 25) ctx.font = "800 18px Plus Jakarta Sans";
+                ctx.textAlign = "center"; ctx.fillStyle = "#1e293b"; ctx.font = "bold 16px Plus Jakarta Sans";
+                ctx.fillText(textType, 250, boxY + 35); ctx.font = "800 24px Plus Jakarta Sans";
+                ctx.fillStyle = colors[lastHit.score] || "#000"; if(textResult.length > 25) ctx.font = "800 18px Plus Jakarta Sans";
                 ctx.fillText(textResult, 250, boxY + 70);
-                
                 drawFlag(hitX, hitY);
             }
         }
@@ -239,17 +231,12 @@
             ctx.fillStyle = "red"; ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
         }
 
-        // HÀM XỬ LÝ ĐIỂM CHẠM - ĐÃ KHẮC PHỤC LỖI TRÊN ĐIỆN THOẠI
         function handlePoint(clientX, clientY) {
             const rect = canvas.getBoundingClientRect();
-            
-            // Tính toán tỷ lệ scale để điểm chạm khớp chính xác với độ phân giải Canvas
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
-            
             const x = (clientX - rect.left) * scaleX;
             const y = (clientY - rect.top) * scaleY;
-
             const dist = Math.sqrt(Math.pow(x - 250, 2) + Math.pow(y - 460, 2));
             
             let score = "KHÔNG ĐẠT";
@@ -258,11 +245,11 @@
             
             clickCount++;
             const btn = document.getElementById('btn-submit');
-            btn.className = (clickCount >= 2) ? "w-full bg-emerald-600 text-white font-black py-5 rounded-xl shadow-lg uppercase text-xs tracking-widest" : "btn-disabled w-full bg-emerald-600 text-white font-black py-5 rounded-xl shadow-lg uppercase text-xs tracking-widest";
+            btn.className = (clickCount >= 2) ? "w-full bg-emerald-600 text-white font-black py-5 rounded-xl shadow-lg uppercase text-xs tracking-widest transition-all" : "btn-disabled w-full bg-emerald-600 text-white font-black py-5 rounded-xl shadow-lg uppercase text-xs tracking-widest";
 
-            lastHit = { x, y, score, side, clickCount };
+            lastHit = { x, y, score, side };
             drawTarget(x, y);
-            if(deviceRole === 'judge') updateCloudOnlyHit();
+            if(deviceRole === 'judge') updateCloud();
         }
 
         function addShooter() {
@@ -291,8 +278,7 @@
             const s = registeredShooters.find(x => x.id === id);
             if(!s) return;
             editingId = id;
-            document.getElementById('reg-type').value = s.type;
-            handleTypeChange();
+            document.getElementById('reg-type').value = s.type; handleTypeChange();
             document.getElementById('reg-name').value = s.name;
             document.getElementById('reg-a').value = s.a; document.getElementById('reg-b').value = s.b;
             document.getElementById('reg-c').value = s.c; document.getElementById('reg-d').value = s.d;
@@ -311,7 +297,7 @@
             drawTarget(); switchTab('practice');
         }
 
-        async function submitResult() {
+        function submitResult() {
             if (!currentThrower || !lastHit || clickCount < 2) return alert("Phải thực hiện quả ném thật trước!");
             const record = { ...currentThrower, ...lastHit };
             historyData.unshift(record);
@@ -322,37 +308,45 @@
             updateCloud();
         }
 
-        async function resetSystemData() { if (confirm("Xoá sạch dữ liệu?")) { historyData = []; registeredShooters = []; lastHit = null; currentThrower = null; updateCloud(); } }
+        function resetSystemData() { if (confirm("Xoá sạch dữ liệu?")) { historyData = []; registeredShooters = []; lastHit = null; currentThrower = null; updateCloud(); } }
 
-        async function updateCloud() { renderUI();
+        // --- HÀM CẬP NHẬT FIREBASE ---
+        function updateCloud() { 
+            renderUI();
             if(!roomId) return;
-            try { await fetch(`${API_URL}/${roomId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY }, body: JSON.stringify({ lastHit, history: historyData, registry: registeredShooters, clickCount }) }); } catch (e) {}
+            db.ref('grenade_rooms/' + roomId).set({ 
+                lastHit, 
+                history: historyData, 
+                registry: registeredShooters, 
+                clickCount 
+            });
         }
 
-        async function updateCloudOnlyHit() {
-            if(!roomId) return;
-            try { await fetch(`${API_URL}/${roomId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY }, body: JSON.stringify({ lastHit, history: historyData, registry: registeredShooters, clickCount }) }); } catch (e) {}
-        }
-
-        async function createRoom() {
-            const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY, 'X-Bin-Private': 'false' }, body: JSON.stringify({ lastHit: null, history: [], registry: [], clickCount: 0 }) });
-            const data = await res.json(); roomId = data.metadata.id; document.getElementById('sync-id').value = roomId; generateQR(); startSync();
+        function createRoom() {
+            roomId = "NEM_" + Math.floor(100000 + Math.random() * 900000).toString();
+            document.getElementById('sync-id').value = roomId;
+            updateCloud(); generateQR(); startSync();
         }
 
         function startSync() {
+            if(!roomId) return;
             document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500";
             document.getElementById('status-text').innerText = "Trực tuyến";
-            setInterval(async () => {
-                try {
-                    const res = await fetch(`${API_URL}/${roomId}/latest`, { headers: { 'X-Master-Key': MASTER_KEY }, cache: 'no-store' });
-                    const data = await res.json();
-                    if (data.record) {
-                        historyData = data.record.history || []; registeredShooters = data.record.registry || [];
-                        renderUI();
-                        if (deviceRole === 'viewer' && data.record.lastHit) { lastHit = data.record.lastHit; clickCount = data.record.clickCount || 0; drawTarget(lastHit.x, lastHit.y); }
+            document.getElementById('status-text').className = "text-[10px] uppercase text-emerald-500 font-bold tracking-widest";
+            
+            db.ref('grenade_rooms/' + roomId).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    historyData = data.history || []; 
+                    registeredShooters = data.registry || [];
+                    renderUI();
+                    if (deviceRole === 'viewer' && data.lastHit) { 
+                        lastHit = data.lastHit; 
+                        clickCount = data.clickCount || 0; 
+                        drawTarget(lastHit.x, lastHit.y); 
                     }
-                } catch (e) {}
-            }, 3000);
+                }
+            });
         }
 
         function renderUI() {
@@ -383,7 +377,6 @@
             data.forEach(h => {
                 const comp = h.c;
                 if(!companyMap[comp]) companyMap[comp] = { CBc: null, CBb: null, CBa: null, CSM_Platoons: {} };
-                
                 let key = "";
                 if(h.type === 'CB/c') key = "CB/c";
                 else if(h.type === 'CB/b') key = "CB/b";
@@ -394,7 +387,6 @@
                     const p = companyMap[comp].CSM_Platoons[key];
                     p.ts++; if(h.score === 'Giỏi') p.g++; else if(h.score === 'Khá') p.k++; else if(h.score === 'Đạt') p.d++; else p.kd++;
                 }
-
                 if(key !== "" && h.type !== 'CSM') {
                     if(!companyMap[comp][key]) companyMap[comp][key] = { ts: 0, g: 0, k: 0, d: 0, kd: 0 };
                     const target = companyMap[comp][key];
@@ -421,7 +413,6 @@
                     <tr class="bg-slate-950 text-[8px] text-slate-600">
                     <th>SL</th><th>%</th><th>SL</th><th>%</th><th>SL</th><th>%</th><th>SL</th><th>%</th></tr></thead>
                     <tbody class="divide-y divide-slate-800/50">`;
-
                 const cData = companyMap[comp];
                 ["CB/c", "CB/b", "CB/a"].forEach(k => { if(cData[k]) statsHtml += generateStatRow(k, cData[k]); });
                 Object.keys(cData.CSM_Platoons).sort().forEach(p => { statsHtml += generateStatRow(p, cData.CSM_Platoons[p]); });
@@ -440,28 +431,16 @@
         }
 
         function exportRegistration() {
-            const data = registeredShooters.map(s => ({
-                "Họ và Tên": s.name, 
-                "Đối tượng": s.type, 
-                "Tiểu đội (a)": s.a, 
-                "Trung đội (b)": s.b, 
-                "Đại đội (c)": s.c, 
-                "Tiểu đoàn (d)": s.d
-            }));
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DS_CHO"); XLSX.writeFile(wb, "Danh_Sach_Cho_Nem.xlsx");
+            const data = registeredShooters.map(s => ({ "Họ và Tên": s.name, "Đối tượng": s.type, "Tiểu đội (a)": s.a, "Trung đội (b)": s.b, "Đại đội (c)": s.c, "Tiểu đoàn (d)": s.d }));
+            const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "DS_CHO"); XLSX.writeFile(wb, "Danh_Sach_Cho_Nem.xlsx");
         }
 
         function exportFullResults() {
             if(historyData.length === 0) return alert("Chưa có kết quả!");
             const wb = XLSX.utils.book_new();
             const detailData = historyData.map(h => ({ "Họ Tên": h.name, "Đối tượng": h.type, "Tiểu đội": h.a, "Trung đội": h.b, "Đại đội": h.c, "Tiểu đoàn": h.d, "Xếp loại": h.score, "Lệch": h.side }));
-            const wsHistory = XLSX.utils.json_to_sheet(detailData);
-            XLSX.utils.book_append_sheet(wb, wsHistory, "Ket_Qua_Chi_Tiet");
-
-            const summaryRows = [
-                ["Đối tượng / Đơn vị", "Quân số", "Giỏi", "% Giỏi", "Khá", "% Khá", "Đạt", "% Đạt", "Không Đạt", "% K.Đạt"]
-            ];
+            const wsHistory = XLSX.utils.json_to_sheet(detailData); XLSX.utils.book_append_sheet(wb, wsHistory, "Ket_Qua_Chi_Tiet");
+            const summaryRows = [ ["Đối tượng / Đơn vị", "Quân số", "Giỏi", "% Giỏi", "Khá", "% Khá", "Đạt", "% Đạt", "Không Đạt", "% K.Đạt"] ];
             const companyMap = getStatsMap(historyData);
             Object.keys(companyMap).sort().forEach(comp => {
                 summaryRows.push([`ĐẠI ĐỘI: ${comp}`, "", "", "", "", "", "", "", "", ""]);
@@ -469,9 +448,7 @@
                 ["CB/c", "CB/b", "CB/a"].forEach(k => { if(cData[k]) summaryRows.push(formatStatForExcel(k, cData[k])); });
                 Object.keys(cData.CSM_Platoons).sort().forEach(p => { summaryRows.push(formatStatForExcel(p, cData.CSM_Platoons[p])); });
             });
-            const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-            XLSX.utils.book_append_sheet(wb, wsSummary, "Thong_Ke_Tong_Hop");
-            XLSX.writeFile(wb, "Ket_Qua_Nem_Luu_Dan.xlsx");
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows); XLSX.utils.book_append_sheet(wb, wsSummary, "Thong_Ke_Tong_Hop"); XLSX.writeFile(wb, "Ket_Qua_Nem_Luu_Dan.xlsx");
         }
 
         function formatStatForExcel(label, s) {
@@ -493,9 +470,7 @@
                     c: (x["Đại đội (c)"] || x["c"] || "-").toString().trim(),
                     d: (x["Tiểu đoàn (d)"] || x["d"] || "-").toString().trim()
                 }));
-                updateCloud(); 
-                alert("Nạp dữ liệu thành công!");
-                e.target.value = ''; 
+                updateCloud(); alert("Nạp dữ liệu thành công!"); e.target.value = ''; 
             }; 
             reader.readAsBinaryString(e.target.files[0]);
         }
@@ -504,7 +479,15 @@
             const container = document.getElementById("qrcode"); container.innerHTML = "";
             new QRCode(container, { text: `${window.location.origin}${window.location.pathname}?room=${roomId}`, width: 64, height: 64 }); 
         }
-        function manualSync() { roomId = document.getElementById('sync-id').value.trim(); if(roomId.length > 20) startSync(); }
+        
+        function manualSync() { 
+            roomId = document.getElementById('sync-id').value.trim(); 
+            if(roomId.length >= 6) {
+                window.history.replaceState(null, "", "?room=" + roomId);
+                generateQR();
+                startSync();
+            }
+        }
     </script>
 </body>
 </html>
